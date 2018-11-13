@@ -1,0 +1,2 @@
+class Require < ApplicationRecord
+end
