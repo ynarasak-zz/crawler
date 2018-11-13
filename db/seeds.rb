@@ -12,6 +12,6 @@ CSV.foreach('db/require.csv') do |row|
 end
 
 Keyword.destroy_all
-CSV.foreach('db/keyword.csv') do |row|
+CSV.foreach('db/keyword.csv', :skip_lines => /^#.*$/) do |row|
   Keyword.create(:company_name => row[0], :owner => row[1])
 end
