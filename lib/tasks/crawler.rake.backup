@@ -1,0 +1,92 @@
+# encoding: utf-8
+# bundle exec rake crawler:process
+require 'capybara'
+require 'capybara/poltergeist'
+require 'selenium-webdriver'
+require 'capybara/dsl'
+
+
+module CrawlerTask
+  extend Rake::DSL
+  extend self
+
+  Capybara.current_driver = :selenium
+
+  namespace :crawler do
+    desc "googleへクローリングを実行します" #=> 説明
+
+    def save_page prefix, session, totalCount, limit, key
+      p totalCount
+      flList = session.all(:xpath, '//*[@class="fl"]')
+      binding.pry
+      flList.each do | v |
+        if totalCount > limit && v.text.eql?(key)
+          href = v["href"]
+          p href
+    #      #v.click
+          session.visit href
+          saveFileName = "tmp/"+key+"_"+prefix+"_screenshot.png"
+          session.save_screenshot(saveFileName, full: true)
+          break
+        end
+      end
+      session
+    end
+
+    # :environmentは超大事。ないとモデルにアクセスできない
+    task :process => :environment do
+      keywordTest = '"Framgia" OR "小林泰平" "捜査" OR "指名手配"'
+      Keyword.all.each do |target|
+        compWord = '"%s" OR "%s" ' % [target.company_name, target.owner]
+
+        # キーワードが多い事でGoogle検索エラーとなるので、一旦16上限で実行
+        Require.find_in_batches(batch_size: 16) do |require_array|
+          requireWord = ""
+          for var in require_array do
+            if requireWord.blank?
+              requireWord = '"%s"' % var["word"]
+            else
+              requireWord = '%s OR "%s"' % [requireWord, var["word"]]
+            end
+          end
+          keyword = compWord + requireWord
+
+          # create capybara session
+          session = Capybara::Session.new(:poltergeist)
+      
+          # start crawling
+          session.visit URI.escape("https://www.google.co.jp/search?q=" + keyword)
+
+          result_status = session.all("#resultStats")[0]
+          count = 0;
+          unless result_status.blank?
+            count = result_status.text.gsub(/[^\d]/, "").to_i
+          end
+
+          # save image
+          prefix = '%d_%s' % [count, keyword.gsub(" ","").gsub('"', "")]
+
+          saveFileName = "tmp/1_"+prefix+"_screenshot.png"
+          #saveFileName = "tmp/1_"+prefix+"_screenshot#{Time.now.strftime("%Y%m%d%H%M%S")}.png"
+          session.save_screenshot(saveFileName, full: true)
+        
+          #binding.pry
+          #flList = session.all(:xpath, '//*[@class="fl"]')
+          #flList.each do | v |
+          #  if count > 10 && v.text.eql?("2")
+          #    p v["href"]
+          #    v.click
+          #    saveFileName = "tmp/2_"+prefix+"_screenshot.png"
+          #    session.save_screenshot(saveFileName, full: true)
+          #    break
+          #  end
+          #end
+          session = save_page(prefix, session, count, 10, "2")
+          session = save_page(prefix, session, count, 20, "3")
+          break
+        end # Require
+        break
+      end # Keyword
+    end # process
+  end # crawler
+end # Module

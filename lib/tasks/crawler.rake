@@ -5,35 +5,66 @@ require 'capybara/poltergeist'
 require 'selenium-webdriver'
 require 'capybara/dsl'
 
-Capybara.current_driver = :selenium
+module CrawlerTask
+  extend Rake::DSL
+  extend self
 
-namespace :crawler do
-  desc "googleへクローリングを実行します" #=> 説明
+  # set driver
+  Capybara.current_driver = :selenium
 
-# $ rake inactive_user:destroy_unconfirmed のように使う
-# :environmentは超大事。ないとモデルにアクセスできない
+  namespace :crawler do
+    desc "googleへクローリングを実行します" #=> 説明
 
-  task :process => :environment do
-    keyword = '"Framgia" OR "小林泰平" "捜査" OR "指名手配"'
-    Keyword.all.each do |target|
-      p target.company_name
-      p target.owner
-
-      # キーワードが多い事でGoogle検索エラーとなるので、一旦16上限で実行
-      Require.find_in_batches(batch_size: 16) do |require_array|
-        for var in require_array do
-          p var["word"]
-        end
-        p "##########"
-      end
-      # create capybara session
-      #session = Capybara::Session.new(:poltergeist)
-      
-      # start crawling
-      #session.visit URI.escape("https://www.google.co.jp/search?q=" + keyword)
-
-      # save image
-      #session.save_screenshot "tmp/"+keyword.gsub(" ","")+"_screenshot#{Time.now.strftime("%Y%m%d%H%M%S")}.png"
+    def create_file_path totalCount, keyword, key
+      #saveFileName = "tmp/1_"+prefix+"_screenshot#{Time.now.strftime("%Y%m%d%H%M%S")}.png"
+      'tmp/%d_%s_%s_screenshot.png' % [totalCount, key, keyword.gsub(" ","").gsub('"', "")] 
     end
-  end
-end
+
+    def save_page keyword, session, totalCount, limit, key
+      #flList = session.all(:xpath, '//*[@class="fl"]')
+      session.all(:xpath, '//*[@class="fl"]').each do | v |
+        if totalCount > limit && v.text.eql?(key)
+          session.visit v["href"]
+          session.save_screenshot(create_file_path(totalCount, keyword, key), full: true)
+          break
+        end
+      end
+      session
+    end
+
+    task :process => :environment do
+      # create capybara session
+      session = Capybara::Session.new(:poltergeist)
+
+      Keyword.all.each do |target|
+        compWord = '"%s" OR "%s" ' % [target.company_name, target.owner]
+
+        Require.find_in_batches(batch_size: 16) do |require_array|
+          requireWord = ""
+          for var in require_array do
+            if requireWord.blank?
+              requireWord = '"%s"' % var["word"]
+            else
+              requireWord = '%s OR "%s"' % [requireWord, var["word"]]
+            end
+          end
+          keyword = compWord + requireWord
+      
+          # start crawling
+          session.visit URI.escape("https://www.google.co.jp/search?q=" + keyword)
+
+          result_status = session.all("#resultStats")[0]
+          count = (result_status.blank?) ? 0 : result_status.text.gsub(/[^\d]/, "").to_i
+
+          # save image
+          session.save_screenshot(create_file_path(count, keyword, "1"), full: true)
+        
+          session = save_page(keyword, session, count, 10, "2")
+          session = save_page(keyword, session, count, 20, "3")
+          #break
+        end # Require
+        #break
+      end # Keyword
+    end # process
+  end # crawler
+end # Module
