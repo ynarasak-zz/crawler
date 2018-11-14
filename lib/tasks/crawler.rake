@@ -85,7 +85,9 @@ module CrawlerTask
 
       Keyword.all.each do |target|
         crawler_process session, [target.company_name, target.owner]
+        break;
       end # Keyword
+      break;
     end # process
   
   end # crawler
