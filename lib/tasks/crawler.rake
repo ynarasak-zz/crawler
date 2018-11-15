@@ -4,6 +4,8 @@ require 'capybara'
 require 'capybara/poltergeist'
 require 'selenium-webdriver'
 require 'capybara/dsl'
+require 'google_drive'
+require 'date'
 
 module CrawlerTask
   extend Rake::DSL
@@ -11,6 +13,8 @@ module CrawlerTask
 
   # set driver
   Capybara.current_driver = :selenium
+  @googleSession = GoogleDrive::Session.from_config("config.json")
+  @sp = @googleSession.spreadsheet_by_url("https://docs.google.com/spreadsheets/d/1bfeuj0sWTI5WzNU_ZSACc6gnIgSKjdsPjrl3af7c2bg/edit#gid=0")
 
   namespace :crawler do
     desc "googleへクローリングを実行します" #=> 説明
@@ -73,8 +77,8 @@ module CrawlerTask
         # save image
         session.save_screenshot(create_file_path(count, keyword, "1"), full: true)
         
-        session = save_page(session, count, 10, keyword, "2")
-        session = save_page(session, count, 20, keyword, "3")
+        #session = save_page(session, count, 10, keyword, "2")
+        #session = save_page(session, count, 20, keyword, "3")
         #break
       end # Require
     end
@@ -82,12 +86,34 @@ module CrawlerTask
     task :process => :environment do
       # create capybara session
       session = Capybara::Session.new(:poltergeist)
+      ws = @sp.worksheet_by_title("list")
+      now = DateTime.now.strftime("%Y年%m月%d日 %H:%M:%S")
+      ws[1, 2] = now # B1
+      ws.save
+      rowNumMax = ws.num_rows
+      for row in 3..rowNumMax do
+        company_name = ws[row, 2] #B get company_name
+        owner = ws[row, 3] #C get owner
+        flg = ws[row, 4] #D get date
+        if flg.blank?
+          crawler_process session, [company_name]
+          crawler_process session, [owner]
+          ws[row, 4] = DateTime.now.strftime("%Y年%m月%d日 %H:%M:%S")
+          break
+        else
+          next
+        end
+      end
 
-      Keyword.all.each do |target|
-        crawler_process session, [target.company_name, target.owner]
-        break;
-      end # Keyword
-      break;
+      # From MySQL
+      #Keyword.all.each do |target|
+      #  crawler_process session, [target.company_name, target.owner]
+      #  break
+      #end # Keyword
+
+      ws[1, 3] = "実行完了" # C1 
+      ws.save
+      #break
     end # process
   
   end # crawler
