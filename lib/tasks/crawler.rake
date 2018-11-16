@@ -23,9 +23,14 @@ module CrawlerTask
       Rails.logger
     end
 
+    def create_file_name totalCount, keyword, key
+      #saveFileName = "tmp/1_"+prefix+"_screenshot#{Time.now.strftime("%Y%m%d%H%M%S")}.png"
+      '%d_%s_%s_screenshot.png' % [totalCount, key, keyword.gsub("allintitle:","").gsub(" ","").gsub('"', "")]
+    end
+
     def create_file_path totalCount, keyword, key
       #saveFileName = "tmp/1_"+prefix+"_screenshot#{Time.now.strftime("%Y%m%d%H%M%S")}.png"
-      'tmp/%d_%s_%s_screenshot.png' % [totalCount, key, keyword.gsub("allintitle:","").gsub(" ","").gsub('"', "")] 
+      'tmp/%d_%s_%s_screenshot.png' % [totalCount, key, keyword.gsub("allintitle:","").gsub(" ","").gsub('"', "")]
     end
 
     def save_page session, totalCount, limit, keyword, key
@@ -76,7 +81,24 @@ module CrawlerTask
 
         # save image
         session.save_screenshot(create_file_path(count, keyword, "1"), full: true)
-        
+        createFileName = create_file_name(count, keyword, "1")
+        @googleSession.upload_from_file(create_file_path(count, keyword, "1"), createFileName)
+        file = @googleSession.file_by_title(createFileName)
+        folder = @googleSession.file_by_title("Crawler")
+        folder.add(file)
+
+        # 以下のコードは scope が https://www.googleapis.com/auth/drive なら
+        # session.root_collection.remove(file)
+        # で代替可能
+        parents = @googleSession.client.execute(api_method: session.drive.parents.list,
+          parameters: {"fileId" => file.id})
+        root = parents.data.items.find(&:is_root)
+        @googleSession.client.execute(api_method: session.drive.parents.delete,
+                       parameters: {
+                         "fileId" => file.id,
+                         “parentId” => root.id
+                       })
+
         #session = save_page(session, count, 10, keyword, "2")
         #session = save_page(session, count, 20, keyword, "3")
         #break
@@ -97,8 +119,11 @@ module CrawlerTask
         flg = ws[row, 4] #D get date
         if flg.blank?
           crawler_process session, [company_name]
-          crawler_process session, [owner]
-          ws[row, 4] = DateTime.now.strftime("%Y年%m月%d日 %H:%M:%S")
+          #crawler_process session, [owner]
+          #ws[row, 4] = DateTime.now.strftime("%Y年%m月%d日 %H:%M:%S")
+          #myFolder = @googleSession.collection_by_url("https://drive.google.com/drive/u/0/folders/1Nw66YhPHhaNlYZLdTpzLGRpTRfCvDgDZ")
+          #gdriveName = DateTime.now.strftime("%Y%m%d_%H%M%S")
+          #myFolder.create_subfolder(gdriveName)
           break
         else
           next
