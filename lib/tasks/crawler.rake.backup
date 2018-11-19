@@ -35,7 +35,6 @@ module CrawlerTask
 
     # :environmentは超大事。ないとモデルにアクセスできない
     task :process => :environment do
-      keywordTest = '"Framgia" OR "小林泰平" "捜査" OR "指名手配"'
       Keyword.all.each do |target|
         compWord = '"%s" OR "%s" ' % [target.company_name, target.owner]
 
